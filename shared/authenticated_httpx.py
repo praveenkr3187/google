@@ -1,4 +1,5 @@
 
+import os
 import subprocess
 from urllib.parse import urlparse
 
@@ -26,6 +27,12 @@ def create_authenticated_client(
     Returns:
         httpx.AsyncClient: httpx Client with Google identity token authentication.
     """
+
+    if os.environ.get("GOOGLE_API_KEY"):
+        return httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=timeout,
+        )
 
     class _IdentityTokenAuth(httpx.Auth):
         def __init__(self, remote_service_url: str):
@@ -78,7 +85,7 @@ def create_authenticated_client(
                             self.session = AuthorizedSession(
                                 credentials
                             )
-                    except subprocess.SubprocessError:
+                    except (subprocess.SubprocessError, FileNotFoundError):
                         print("ERROR: Unable to fetch identity token.")
             if id_token:
                 request.headers["Authorization"] = f"Bearer {id_token}"

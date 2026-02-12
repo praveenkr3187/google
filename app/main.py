@@ -12,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from google.genai import types as genai_types
 from opentelemetry import trace
-from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
 from opentelemetry.sdk.trace import TracerProvider, export
 from pydantic import BaseModel
 
@@ -27,11 +26,20 @@ class Feedback(BaseModel):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Only set up Cloud Trace if we have Google Cloud credentials (not just API key)
 provider = TracerProvider()
-processor = export.BatchSpanProcessor(
-    CloudTraceSpanExporter(),
-)
-provider.add_span_processor(processor)
+if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "False").lower() == "true":
+    try:
+        from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+        processor = export.BatchSpanProcessor(
+            CloudTraceSpanExporter(),
+        )
+        provider.add_span_processor(processor)
+        logger.info("Cloud Trace exporter enabled")
+    except Exception as e:
+        logger.warning(f"Could not initialize Cloud Trace exporter: {e}")
+else:
+    logger.info("Running without Cloud Trace (using Gemini API key)")
 trace.set_tracer_provider(provider)
 
 app = FastAPI()

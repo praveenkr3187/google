@@ -28,6 +28,9 @@ except Exception:
     # If no credentials available, continue without setting project
     pass
 
-if "GEMINI_API_KEY" in os.environ and "GOOGLE_API_KEY" not in os.environ:
-    os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "global")
+# Use Gemini API directly if GOOGLE_API_KEY is set, otherwise use Vertex AI
+if "GOOGLE_API_KEY" in os.environ:
+    os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "False")
+else:
+    os.environ.setdefault("GOOGLE_CLOUD_LOCATION", "us-central1")
     os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "True")

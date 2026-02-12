@@ -5,10 +5,8 @@ echo "Stopping any existing processes on ports 8000-8004..."
 lsof -ti:8000,8001,8002,8003,8004 | xargs kill -9 2>/dev/null
 
 # Set common environment variables for local development
-export GOOGLE_CLOUD_PROJECT=$(gcloud config get-value project)
-export GOOGLE_CLOUD_LOCATION="us-central1"
-export GOOGLE_GENAI_USE_VERTEXAI="True" # Use Gemini API locally
-export GOOGLE_API_KEY="<your-key-here>" # Use if not using Vertex AI
+# Set your GOOGLE_API_KEY to use Gemini API directly (no Vertex AI needed)
+export GOOGLE_API_KEY="${GOOGLE_API_KEY:-AIzaSyBlKoss2L5NkXAiHO2Ph_4c72gJmjvTjFg}"
 
 echo "Starting Researcher Agent on port 8001..."
 pushd agents/researcher
