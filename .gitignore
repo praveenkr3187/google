@@ -155,6 +155,9 @@ tmp*
 **/node_modules
 npm-debug.log
 yarn-error.log
+.vite/
+frontend/.env
+frontend/.env.local
 
 # IDEs and editors
 .idea/

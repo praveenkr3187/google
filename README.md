@@ -1,83 +1,147 @@
-# course-creation-agent (Distributed)
+# Enterprise A2A Platform (SAP Concur MVP)
 
-A multi-agent system built with Google's Agent Development Kit (ADK) and Agent-to-Agent (A2A) protocol. It features a team of microservice agents that research, judge, and build content, orchestrated to deliver high-quality results.
+An event-driven, multi-agent platform that interprets business scenarios, plans workflows, discovers SAP APIs via a Knowledge Graph, generates synthetic data, executes mock SAP Concur API calls, verifies results, and returns created record IDs. This MVP is designed for Google Cloud with Cloud Run + Pub/Sub + Firestore.
 
-## Architecture
+## Architecture Summary
 
-This project uses a distributed microservices architecture where each agent runs in its own container and communicates via A2A:
+- **Frontend**: React (Cloud Run)
+- **Agents (Cloud Run services)**:
+    - Scenario Gateway / Orchestrator
+    - Intent Agent
+    - Planning Agent
+    - API Reasoning Agent (Knowledge Graph)
+    - Synthetic Data Agent
+    - Execution Agent
+    - Verification Agent
+- **Event Bus**: Google Pub/Sub (A2A message schema)
+- **State Storage**: Firestore
+- **Knowledge Graph**: Neo4j (GKE/AuraDB) or mock KG
+- **SAP Concur**: Mock FastAPI server
 
-*   **Orchestrator Service (`orchestrator`):** The main entry point. It manages the workflow using `LoopAgent` and `SequentialAgent`, and connects to other agents using `RemoteA2aAgent`.
-*   **Researcher Service (`researcher`):** A standalone agent that gathers information using Google Search.
-*   **Judge Service (`judge`):** A standalone agent that evaluates research quality.
-*   **Content Builder Service (`content_builder`):** A standalone agent that compiles the final course.
-*   **Agent App (`app`):** A web application that queries the Orchestrator agent, displays progress and results.
+## A2A Message Schema
+
+All messages follow:
+
+```
+{
+    "contextId": "uuid",
+    "taskType": "STRING",
+    "payload": {},
+    "timestamp": "ISO8601"
+}
+```
 
 ## Project Structure
 
 ```
-course-creation-agent/
-├── agents/
-    ├── orchestrator/        # Main Orchestrator agent, ADK API Service
-    ├── researcher/          # Researcher agent, A2A microservice
-    ├── judge/               # Judge agent, A2A microservice
-    └── content_builder/     # Content Builder agent, A2A microservice
-├── app/                     # Web App service application
-    └── frontend/            # Frontend application
-├── shared/                  # Files used by all agents
-└── ...
+prai-roadshow-lab-1-starter/
+├── platform_shared/           # Shared A2A, Pub/Sub, Firestore, KG utilities
+├── services/
+│   ├── orchestrator/          # /run-scenario entry point
+│   ├── intent_agent/          # scenario.received → scenario.interpreted
+│   ├── planning_agent/        # scenario.interpreted → workflow.planned
+│   ├── api_reasoning_agent/   # workflow.planned → apis.discovered
+│   ├── synthetic_data_agent/  # apis.discovered → data.generated
+│   ├── execution_agent/       # data.generated → workflow.executed
+│   ├── verification_agent/    # workflow.executed → workflow.completed
+│   └── mock_sap_concur/        # Mock SAP Concur APIs
+├── scripts/
+│   ├── seed_kg.py              # Seed Enterprise Knowledge Graph
+│   └── ingest_kg.py            # Simplified ingestion pipeline
+├── frontend/                   # React UI (Vite)
+└── run_local.sh                # Local runner
 ```
 
-### Shared files
+## Pub/Sub Topics
 
-There are some files in `shared` directory that are shared across all agents and the web app.
-To avoid duplication, these files are linked into respective subdirectories as [**symlinks**](https://en.wikipedia.org/wiki/Symbolic_link).
+- `scenario.received`
+- `scenario.interpreted`
+- `workflow.planned`
+- `apis.discovered`
+- `data.generated`
+- `workflow.executed`
+- `workflow.completed`
 
-* `a2a_utils.py` - contains code for rewriting agent URLs in A2A AgentCard when deployed in Cloud Run.
-* `adk_app.py` - ADK API Service implementation with additional A2A functionality.
-* `authenticated_httpx.py` - [httpx](https://www.python-httpx.org/) client extension for [service-to-service requests](https://docs.cloud.google.com/run/docs/authenticating/service-to-service).
+## Local Run
 
-## Requirements
+1. Install dependencies
+     ```bash
+     uv sync
+     ```
 
-*   **uv**: Python package manager (required for local development).
-*   **Google Cloud SDK**: For GCP services and authentication.
+2. Start local services
+     ```bash
+     ./run_local.sh
+     ```
 
-## Quick Start
+3. Frontend (optional)
+     ```bash
+     cd frontend
+     npm install
+     npm run dev
+     ```
+     Open http://localhost:5173
 
-1.  **Install Dependencies:**
-    ```bash
-    uv sync
-    ```
+4. Test Orchestrator
+     ```bash
+     curl -X POST http://localhost:8081/run-scenario \
+         -H "Content-Type: application/json" \
+         -d '{"scenario": "Generate 5 overdue invoices for a US vendor in Concur"}'
+     ```
 
-2.  **Set up credentials:**
-    Ensure you have Google Cloud credentials available. You might need to run:
-    ```bash
-    gcloud auth application-default login
-    ```
-    And ensure your `GOOGLE_CLOUD_PROJECT` environment variable is set.
+## Knowledge Graph
 
-3.  **Run Locally:**
-    ```bash
-    ./run_local.sh
-    ```
-    This will start all 4 agents and the web app in background processes
+- **Schema**: `SAPProduct`, `BusinessObject`, `APIEndpoint`
+- **Relationships**:
+    - `SAPProduct` → `HAS_OBJECT` → `BusinessObject`
+    - `APIEndpoint` → `CREATES` → `BusinessObject`
+    - `BusinessObject` → `DEPENDS_ON` → `BusinessObject`
 
-4.  **Access the App:**
-    Open **http://localhost:8000** in your browser.
+Seed the KG:
+```bash
+uv run python scripts/seed_kg.py
+```
 
-## Deployment
+## Deployment (Google Cloud)
 
-To deploy to Google Cloud Run, you need to deploy each service individually and then configure the Orchestrator with the URLs of the other services.
+1. **Provision**
+     - Cloud Run services for each agent + mock SAP API + frontend
+     - Pub/Sub topics + push subscriptions
+     - Firestore (Native mode)
+     - Neo4j on GKE or AuraDB (optional; mock KG supported)
 
-1.  **Deploy Researcher, Judge, Content Builder, and Orchestrator:**
-    Deploy each of these folders as a separate Cloud Run service. Note down their URLs (e.g., `https://researcher-xyz.a.run.app`).
+2. **Deploy each Cloud Run service**
+     Example for orchestrator:
+     ```bash
+     gcloud run deploy orchestrator \
+         --source . \
+         --region us-central1 \
+         --set-env-vars PUBSUB_PROJECT_ID=$GOOGLE_CLOUD_PROJECT,FIRESTORE_COLLECTION=workflow_contexts
+     ```
 
-2.  **Deploy Agent App:**
-    Deploy the `app/` folder to Cloud Run.
-    Set the following environment variables on the Agent App service:
-    *   `RESEARCHER_AGENT_CARD_URL`: `https://<researcher-url>/a2a/agent/.well-known/agent.json`
-    *   `JUDGE_AGENT_CARD_URL`: `https://<judge-url>/a2a/agent/.well-known/agent.json`
-    *   `CONTENT_BUILDER_AGENT_CARD_URL`: `https://<content-builder-url>/a2a/agent/.well-known/agent.json`
-    *   `AGENT_URL`: `https://<orchestrator-url>`
+3. **Pub/Sub Push Subscriptions**
+     Configure push endpoints for each agent:
+     - Intent Agent → `scenario.received` → `/pubsub/push`
+     - Planning Agent → `scenario.interpreted` → `/pubsub/push`
+     - API Reasoning Agent → `workflow.planned` → `/pubsub/push`
+     - Synthetic Data Agent → `apis.discovered` → `/pubsub/push`
+     - Execution Agent → `data.generated` → `/pubsub/push`
+     - Verification Agent → `workflow.executed` → `/pubsub/push`
 
-3.  **Access:**
-    Open the App's URL in your browser.
+4. **Frontend**
+     Deploy `frontend/` to Cloud Run and set:
+     - `VITE_ORCHESTRATOR_URL` to the orchestrator URL.
+
+## Mock SAP Concur API
+
+Endpoints:
+- `POST /vendors`
+- `POST /invoices`
+- `GET /invoices`
+- `POST /expenses`
+- `GET /expenses`
+
+Overdue rule:
+```
+dueDate < today AND paymentStatus != "Paid"
+```

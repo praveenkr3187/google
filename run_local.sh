@@ -1,61 +1,58 @@
 #!/bin/bash
 
 # Kill any existing processes on these ports
-echo "Stopping any existing processes on ports 8000-8004..."
-lsof -ti:8000,8001,8002,8003,8004 | xargs kill -9 2>/dev/null
+echo "Stopping any existing processes on ports 8081-8087 and 9000..."
+lsof -ti:8081,8082,8083,8084,8085,8086,8087,9000 | xargs kill -9 2>/dev/null
 
-# Set common environment variables for local development
-# Set your GOOGLE_API_KEY to use Gemini API directly (no Vertex AI needed)
-export GOOGLE_API_KEY="${GOOGLE_API_KEY:-AIzaSyBlKoss2L5NkXAiHO2Ph_4c72gJmjvTjFg}"
+export SAP_MOCK_BASE_URL=${SAP_MOCK_BASE_URL:-"http://localhost:9000"}
+export PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-"local-dev"}
+export MOCK_PUBSUB=${MOCK_PUBSUB:-"true"}
 
-echo "Starting Researcher Agent on port 8001..."
-pushd agents/researcher
-uv run adk_app.py --host 0.0.0.0 --port 8001 --a2a . &
-RESEARCHER_PID=$!
-popd
+echo "Starting Mock SAP Concur API on port 9000..."
+uv run uvicorn services.mock_sap_concur.main:app --host 0.0.0.0 --port 9000 &
+MOCK_SAP_PID=$!
 
-echo "Starting Judge Agent on port 8002..."
-pushd agents/judge
-uv run adk_app.py --host 0.0.0.0 --port 8002 --a2a . &
-JUDGE_PID=$!
-popd
-
-echo "Starting Content Builder Agent on port 8003..."
-pushd agents/content_builder
-uv run adk_app.py --host 0.0.0.0 --port 8003 --a2a . &
-CONTENT_BUILDER_PID=$!
-popd
-
-export RESEARCHER_AGENT_CARD_URL=http://localhost:8001/a2a/agent/.well-known/agent-card.json
-export JUDGE_AGENT_CARD_URL=http://localhost:8002/a2a/agent/.well-known/agent-card.json
-export CONTENT_BUILDER_AGENT_CARD_URL=http://localhost:8003/a2a/agent/.well-known/agent-card.json
-
-echo "Starting Orchestrator Agent on port 8004..."
-pushd agents/orchestrator
-uv run adk_app.py --host 0.0.0.0 --port 8004 . &
+echo "Starting Orchestrator on port 8081..."
+uv run uvicorn services.orchestrator.main:app --host 0.0.0.0 --port 8081 &
 ORCHESTRATOR_PID=$!
-popd
 
-# Wait a bit for them to start up
-sleep 5
+echo "Starting Intent Agent on port 8082..."
+uv run uvicorn services.intent_agent.main:app --host 0.0.0.0 --port 8082 &
+INTENT_PID=$!
 
-echo "Starting Orchestrator Agent on port 8000..."
-pushd app
-export AGENT_SERVER_URL=http://localhost:8004
+echo "Starting Planning Agent on port 8083..."
+uv run uvicorn services.planning_agent.main:app --host 0.0.0.0 --port 8083 &
+PLANNING_PID=$!
 
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 &
-BACKEND_PID=$!
-popd
+echo "Starting API Reasoning Agent on port 8084..."
+uv run uvicorn services.api_reasoning_agent.main:app --host 0.0.0.0 --port 8084 &
+API_REASONING_PID=$!
 
-echo "All agents started!"
-echo "Researcher: http://localhost:8001"
-echo "Judge: http://localhost:8002"
-echo "Content Builder: http://localhost:8003"
-echo "Orchestrator: http://localhost:8004"
-echo "App Server (Frontend): http://localhost:8000"
+echo "Starting Synthetic Data Agent on port 8085..."
+uv run uvicorn services.synthetic_data_agent.main:app --host 0.0.0.0 --port 8085 &
+DATA_PID=$!
+
+echo "Starting Execution Agent on port 8086..."
+uv run uvicorn services.execution_agent.main:app --host 0.0.0.0 --port 8086 &
+EXECUTION_PID=$!
+
+echo "Starting Verification Agent on port 8087..."
+uv run uvicorn services.verification_agent.main:app --host 0.0.0.0 --port 8087 &
+VERIFICATION_PID=$!
+
+echo "All services started!"
+echo "Orchestrator: http://localhost:8081"
+echo "Intent Agent: http://localhost:8082"
+echo "Planning Agent: http://localhost:8083"
+echo "API Reasoning Agent: http://localhost:8084"
+echo "Synthetic Data Agent: http://localhost:8085"
+echo "Execution Agent: http://localhost:8086"
+echo "Verification Agent: http://localhost:8087"
+echo "Mock SAP API: http://localhost:9000"
+echo "Note: Pub/Sub topics and push subscriptions must be configured for end-to-end flow."
 echo ""
 echo "Press Ctrl+C to stop all agents."
 
 # Wait for all processes
-trap "kill $RESEARCHER_PID $JUDGE_PID $CONTENT_BUILDER_PID $ORCHESTRATOR_PID $BACKEND_PID; exit" INT
+trap "kill $MOCK_SAP_PID $ORCHESTRATOR_PID $INTENT_PID $PLANNING_PID $API_REASONING_PID $DATA_PID $EXECUTION_PID $VERIFICATION_PID; exit" INT
 wait
